@@ -609,69 +609,63 @@ export default function YouthBudgetApp() {
   }
 
 
-  async function onImageUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function onImageUpload(ev) {
+    const files = Array.from(ev.target.files || []);
+    if (!files.length) return;
+
+    const MAX_RECEIPTS = 5;
+    const currentUrls = form.receiptUrl ? form.receiptUrl.split('|').filter(Boolean) : [];
+    const available = MAX_RECEIPTS - currentUrls.length;
+    if (available <= 0) { alert("최대 5개까지 업로드할 수 있습니다."); return; }
+
+    const toUpload = files.slice(0, available);
+    const newUrls = [...currentUrls];
 
     try {
       setIsUploading(true);
-      if (gsOn && gsCfg.url) {
-        try {
-          // COMPRESSION: Mobile uploads fail if too large. Resize & Convert to JPEG.
-          const compressed = await compressImage(file);
-          const safeDesc = form.description ? form.description.replace(/[^\w가-힣_.-]/g, "_") : "receipt";
-          const formattedAmount = parseAmount(form.amount).toLocaleString('ko-KR');
 
-          let serialPrefix = "";
-          // 1. Try to find existing serial
-          if (editingId && serialMap[editingId]) {
-            serialPrefix = `${serialMap[editingId]}_`;
-          } else {
-            // 2. Real-time Serial Number: Fetch from Server (User Request)
-            // Fetch list to get accurate count (including deletions)
-            let serverCount = expenses.length;
-            try {
-              const listData = await gsFetch(gsCfg, "list", {});
-              if (listData && Array.isArray(listData.expenses)) {
-                serverCount = listData.expenses.length;
-              }
-            } catch (e) {
-              console.warn("Serial fetch failed, using local count", e);
+      for (let i = 0; i < toUpload.length; i++) {
+        const file = toUpload[i];
+        let uploadedUrl = null;
+
+        if (gsOn && gsCfg.url) {
+          try {
+            const compressed = await compressImage(file);
+            const safeDesc = form.description ? form.description.replace(/[^\w가-힣_.-]/g, "_") : "receipt";
+            const formattedAmount = parseAmount(form.amount).toLocaleString('ko-KR');
+
+            let serialPrefix = "";
+            if (editingId && serialMap[editingId]) {
+              serialPrefix = `${serialMap[editingId]}_`;
+            } else {
+              let serverCount = expenses.length;
+              try {
+                const listData = await gsFetch(gsCfg, "list", {});
+                if (listData && Array.isArray(listData.expenses)) serverCount = listData.expenses.length;
+              } catch (e) { console.warn("Serial fetch failed, using local count", e); }
+              serialPrefix = `${serverCount + 1}_`;
             }
 
-            const nextSerial = serverCount + 1;
-            serialPrefix = `${nextSerial}_`;
-          }
+            const suffix = toUpload.length > 1 ? `_${i + 1}` : '';
+            const filename = `${serialPrefix}${safeDesc}_${form.date}_${form.category}_${formattedAmount}원_${form.purchaser || "미지정"}${suffix}.jpg`;
 
-          // Format: Serial_Desc_Date_Cat_Amt_Purchaser
-          const filename = `${serialPrefix}${safeDesc}_${form.date}_${form.category}_${formattedAmount}원_${form.purchaser || "미지정"}.jpg`;
-
-          const res = await gsFetch(gsCfg, "uploadReceipt", {
-            filename,
-            mimeType: "image/jpeg",
-            dataUrl: compressed.dataUrl,
-          });
-          const viewUrl = res.viewUrl || (res.fileId ? `https://drive.google.com/uc?export=view&id=${res.fileId}` : "") || (res.id ? `https://drive.google.com/uc?export=view&id=${res.id}` : "");
-          if (viewUrl) {
-            setForm((f) => ({ ...f, receiptUrl: viewUrl }));
-            return;
+            const res = await gsFetch(gsCfg, "uploadReceipt", { filename, mimeType: "image/jpeg", dataUrl: compressed.dataUrl });
+            const viewUrl = res.viewUrl || (res.fileId ? `https://drive.google.com/uc?export=view&id=${res.fileId}` : "") || (res.id ? `https://drive.google.com/uc?export=view&id=${res.id}` : "");
+            if (viewUrl) uploadedUrl = viewUrl;
+          } catch (err) {
+            console.warn("Drive 업로드 실패", err);
+            alert("드라이브 업로드 실패: " + err.toString() + "\n(로컬 미리보기로 대체합니다)");
           }
-        } catch (err) {
-          console.warn("Drive 업로드 실패", err);
-          alert("드라이브 업로드 실패 상세: " + err.toString() + "\n(로컬 미리보기로 대체합니다)");
         }
+
+        if (!uploadedUrl) uploadedUrl = URL.createObjectURL(file);
+        newUrls.push(uploadedUrl);
       }
 
-      // fallback: 로컬 미리보기
-      const nextUrl = URL.createObjectURL(file);
-      if (receiptObjUrlRef.current) {
-        try { URL.revokeObjectURL(receiptObjUrlRef.current); } catch { }
-      }
-      receiptObjUrlRef.current = nextUrl;
-      setForm((f) => ({ ...f, receiptUrl: nextUrl }));
-
+      setForm(f => ({ ...f, receiptUrl: newUrls.join('|') }));
     } finally {
       setIsUploading(false);
+      ev.target.value = '';
     }
   }
 
@@ -813,29 +807,29 @@ export default function YouthBudgetApp() {
         let hasUpdates = false;
 
         for (const e of expenses) {
-          if (typeof e.receiptUrl === 'string' && (e.receiptUrl.startsWith("blob:") || e.receiptUrl.startsWith("data:"))) {
-            try {
-              const conv = await urlToDataUrl(e.receiptUrl);
-              const safeDesc = e.description ? e.description.replace(/[^\w가-힣_.-]/g, "_") : "receipt";
-              const formattedAmount = parseAmount(e.amount).toLocaleString('ko-KR');
+          const urls = typeof e.receiptUrl === 'string' && e.receiptUrl ? e.receiptUrl.split('|').filter(Boolean) : [];
+          const blobIndices = urls.map((u, i) => (u.startsWith("blob:") || u.startsWith("data:")) ? i : -1).filter(i => i >= 0);
 
-              // Get serial number
-              const serial = serialMap[e.id] || "No";
-              const filename = `${serial}_${safeDesc}_${e.date}_${e.category}_${formattedAmount}원_${e.purchaser || "미지정"}.png`;
-
-              const up = await gsFetch(gsCfg, "uploadReceipt", {
-                filename,
-                mimeType: conv.mime || "image/png",
-                dataUrl: conv.dataUrl,
-              });
-              const viewUrl = up.viewUrl || (up.fileId ? `https://drive.google.com/uc?export=view&id=${up.fileId}` : "") || (up.id ? `https://drive.google.com/uc?export=view&id=${up.id}` : "");
-              if (viewUrl) {
-                next.push({ ...e, receiptUrl: viewUrl, receiptDriveId: up.fileId || up.id || "" });
-                hasUpdates = true;
-                continue;
-              }
-            } catch (err) {
-              console.warn("로컬 영수증 업로드 실패, 기존 URL 유지", err);
+          if (blobIndices.length > 0) {
+            const updatedUrls = [...urls];
+            let anyUploaded = false;
+            for (const idx of blobIndices) {
+              try {
+                const conv = await urlToDataUrl(urls[idx]);
+                const safeDesc = e.description ? e.description.replace(/[^\w가-힣_.-]/g, "_") : "receipt";
+                const formattedAmount = parseAmount(e.amount).toLocaleString('ko-KR');
+                const serial = serialMap[e.id] || "No";
+                const suffix = urls.length > 1 ? `_${idx + 1}` : '';
+                const filename = `${serial}_${safeDesc}_${e.date}_${e.category}_${formattedAmount}원_${e.purchaser || "미지정"}${suffix}.png`;
+                const up = await gsFetch(gsCfg, "uploadReceipt", { filename, mimeType: conv.mime || "image/png", dataUrl: conv.dataUrl });
+                const viewUrl = up.viewUrl || (up.fileId ? `https://drive.google.com/uc?export=view&id=${up.fileId}` : "") || (up.id ? `https://drive.google.com/uc?export=view&id=${up.id}` : "");
+                if (viewUrl) { updatedUrls[idx] = viewUrl; anyUploaded = true; }
+              } catch (err) { console.warn("로컬 영수증 업로드 실패, 기존 URL 유지", err); }
+            }
+            if (anyUploaded) {
+              next.push({ ...e, receiptUrl: updatedUrls.join('|') });
+              hasUpdates = true;
+              continue;
             }
           }
           next.push(e);
@@ -1072,14 +1066,66 @@ export default function YouthBudgetApp() {
           </div>
         </div>
         {/* Bottom Row: Receipt & Buttons */}
+        {/* 업로드된 썸네일 */}
+        {(() => {
+          const urls = form.receiptUrl ? form.receiptUrl.split('|').filter(Boolean) : [];
+          if (!urls.length) return null;
+          return (
+            <div className="flex flex-wrap gap-2 pb-1">
+              {urls.map((url, idx) => (
+                <div key={idx} className="relative group w-16 h-16 shrink-0">
+                  <a href={url} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={url.includes("drive.google.com") && url.includes("id=")
+                        ? `https://drive.google.com/thumbnail?id=${(() => { try { return new URL(url).searchParams.get("id"); } catch { return ""; } })()}&sz=w200`
+                        : url}
+                      alt={`증빙${idx + 1}`}
+                      className="w-16 h-16 object-cover rounded-xl border border-gray-200"
+                    />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = urls.filter((_, i) => i !== idx);
+                      setForm(f => ({ ...f, receiptUrl: next.join('|') }));
+                    }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                  >✕</button>
+                  <span className="absolute bottom-0.5 left-0 right-0 text-center text-white text-xs font-bold drop-shadow">{idx + 1}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         <div className="flex flex-wrap md:flex-nowrap gap-3 items-center">
           <div className="flex-1 flex items-center gap-2">
-            <label className={`shrink-0 px-2 py-2 rounded-xl border border-gray-200 text-base cursor-pointer flex items-center gap-2 transition-colors ${isUploading ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 hover:bg-gray-100 text-gray-600'}`}>
-              {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
-              <span>{isUploading ? "업로드 중..." : "증빙"}</span>
-              <input type="file" accept="image/*" onChange={onImageUpload} className="hidden" disabled={isUploading} />
-            </label>
-            <input type="url" value={form.receiptUrl} onChange={(e) => setForm({ ...form, receiptUrl: e.target.value })} placeholder="또는 URL" className="flex-1 min-w-0 rounded-xl border-gray-300 border px-2 py-2 bg-gray-50 focus:bg-white transition-colors text-base" />
+            {(() => {
+              const count = form.receiptUrl ? form.receiptUrl.split('|').filter(Boolean).length : 0;
+              const isFull = count >= 5;
+              return (
+                <label className={`shrink-0 px-2 py-2 rounded-xl border border-gray-200 text-base cursor-pointer flex items-center gap-2 transition-colors ${isUploading || isFull ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 hover:bg-gray-100 text-gray-600'}`}>
+                  {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+                  <span>{isUploading ? "업로드 중..." : `증빙${count > 0 ? ` (${count}/5)` : ''}`}</span>
+                  <input type="file" accept="image/*" multiple onChange={onImageUpload} className="hidden" disabled={isUploading || isFull} />
+                </label>
+              );
+            })()}
+            <input
+              type="url"
+              placeholder="또는 URL 입력 후 Enter"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const url = e.target.value.trim();
+                  if (!url) return;
+                  const cur = form.receiptUrl ? form.receiptUrl.split('|').filter(Boolean) : [];
+                  if (cur.length >= 5) { alert("최대 5개까지 추가할 수 있습니다."); return; }
+                  setForm(f => ({ ...f, receiptUrl: [...cur, url].join('|') }));
+                  e.target.value = '';
+                }
+              }}
+              className="flex-1 min-w-0 rounded-xl border-gray-300 border px-2 py-2 bg-gray-50 focus:bg-white transition-colors text-base"
+            />
           </div>
 
 
