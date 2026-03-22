@@ -22,7 +22,7 @@ export const DEFAULT_BUDGET = {
 export const CATEGORY_ORDER = DEFAULT_BUDGET.items.map((i) => i.key);
 
 // 이 URL과 토큰은 최초 접속을 위한 '마스터' 정보입니다.
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwCzVU0q9fJXULx-Zqmw5xak1ekJoaJWsejHeWQ5FAynMrTjEdD2f6JxDT9f9WcfOj/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxP7TXHAwfdLoSeQ8rqNurUdAUGpB-if67_pyH6CYCJsUNcVSSCEsjl6twzLfg8aj4Z/exec";
 export const DEFAULT_SCRIPT_TOKEN = "thank1234!!";
 
 // GID 등은 나중에 설정 시트에서 받아오도록 확장 가능하지만, 

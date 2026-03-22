@@ -43,6 +43,7 @@ export default function Attendance({ gsCfg, onJumpToTab, initialMembers = [], in
         phone: '', birthdate: '', school: '', mbti: ''
     });
     const [isUploading, setIsUploading] = useState(false);
+    const [groupIsCustom, setGroupIsCustom] = useState(false);
     const [editingMemberId, setEditingMemberId] = useState(null);
     const [expandedTeacherStudentsId, setExpandedTeacherStudentsId] = useState(null);
 
@@ -431,6 +432,7 @@ export default function Attendance({ gsCfg, onJumpToTab, initialMembers = [], in
             photoUrl: '', photoDriveId: '', s1: '', s2: '', s3: '',
             phone: '', birthdate: '', school: '', mbti: ''
         });
+        setGroupIsCustom(false);
     };
 
     const handleEditMember = (m) => {
@@ -953,7 +955,7 @@ export default function Attendance({ gsCfg, onJumpToTab, initialMembers = [], in
                                                 <div className="flex items-center gap-1.5">
                                                     <span className={`text-lg font-bold ${!isCurrentlyActive(m) ? 'line-through' : ''}`}>{m.name}</span>
                                                     <div className={`flex items-center gap-1 text-base font-normal mt-0.5 whitespace-nowrap ${isCurrentlyActive(m) ? 'text-gray-900' : 'text-gray-400'}`}>
-                                                        <span>{m.group && m.group.length > 10 && m.group.includes('T') ? "목장미정" : m.group}</span>
+                                                        <span>{m.group || ""}</span>
                                                     </div>
                                                 </div>
                                             </td>
@@ -1229,17 +1231,38 @@ export default function Attendance({ gsCfg, onJumpToTab, initialMembers = [], in
                                 </div>
                                 <div className="col-span-1 md:col-span-2">
                                     <label className="text-sm font-medium text-gray-500 mb-1 block text-blue-600">목장</label>
-                                    <select
-                                        value={memberForm.group}
-                                        onChange={e => setMemberForm({ ...memberForm, group: e.target.value })}
-                                        className="w-full rounded-xl border-blue-200 border-2 px-2 py-2 bg-blue-50/30 focus:bg-white transition-colors text-base h-11 outline-none appearance-none cursor-pointer"
-                                    >
-                                        <option value="">목장 선택</option>
-                                        {uniqueGroups.map(g => (
-                                            <option key={g} value={g}>{g}</option>
-                                        ))}
-                                        <option value="목장미정">목장미정</option>
-                                    </select>
+                                    {groupIsCustom ? (
+                                        <div className="flex gap-1">
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={memberForm.group}
+                                                onChange={e => setMemberForm({ ...memberForm, group: e.target.value })}
+                                                placeholder="새 목장 이름 입력"
+                                                className="flex-1 rounded-xl border-blue-400 border-2 px-2 py-2 bg-white transition-colors text-base h-11 outline-none"
+                                            />
+                                            <button type="button" onClick={() => { setGroupIsCustom(false); setMemberForm({ ...memberForm, group: '' }); }} className="px-2 h-11 rounded-xl border border-gray-300 bg-gray-50 text-gray-400 hover:bg-gray-100 text-sm">✕</button>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={memberForm.group}
+                                            onChange={e => {
+                                                if (e.target.value === '__custom__') {
+                                                    setGroupIsCustom(true);
+                                                    setMemberForm({ ...memberForm, group: '' });
+                                                } else {
+                                                    setMemberForm({ ...memberForm, group: e.target.value });
+                                                }
+                                            }}
+                                            className="w-full rounded-xl border-blue-200 border-2 px-2 py-2 bg-blue-50/30 focus:bg-white transition-colors text-base h-11 outline-none appearance-none cursor-pointer"
+                                        >
+                                            <option value="">목장 선택</option>
+                                            {uniqueGroups.map(g => (
+                                                <option key={g} value={g}>{g}</option>
+                                            ))}
+                                            <option value="__custom__">+ 직접 입력</option>
+                                        </select>
+                                    )}
                                 </div>
                                 <div className="col-span-1 md:col-span-2">
                                     <label className="text-sm font-medium text-gray-500 mb-1 block">연락처</label>
@@ -1296,17 +1319,38 @@ export default function Attendance({ gsCfg, onJumpToTab, initialMembers = [], in
                                 </div>
                                 <div className="col-span-1 md:col-span-2">
                                     <label className="text-sm font-medium text-gray-500 mb-1 block text-blue-600">목장</label>
-                                    <select
-                                        value={memberForm.group}
-                                        onChange={e => setMemberForm({ ...memberForm, group: e.target.value })}
-                                        className="w-full rounded-xl border-blue-200 border-2 px-2 py-2 bg-blue-50/30 focus:bg-white transition-colors text-base h-11 outline-none appearance-none cursor-pointer"
-                                    >
-                                        <option value="">목장 선택</option>
-                                        {uniqueGroups.map(g => (
-                                            <option key={g} value={g}>{g}</option>
-                                        ))}
-                                        <option value="목장미정">목장미정</option>
-                                    </select>
+                                    {groupIsCustom ? (
+                                        <div className="flex gap-1">
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={memberForm.group}
+                                                onChange={e => setMemberForm({ ...memberForm, group: e.target.value })}
+                                                placeholder="새 목장 이름 입력"
+                                                className="flex-1 rounded-xl border-blue-400 border-2 px-2 py-2 bg-white transition-colors text-base h-11 outline-none"
+                                            />
+                                            <button type="button" onClick={() => { setGroupIsCustom(false); setMemberForm({ ...memberForm, group: '' }); }} className="px-2 h-11 rounded-xl border border-gray-300 bg-gray-50 text-gray-400 hover:bg-gray-100 text-sm">✕</button>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={memberForm.group}
+                                            onChange={e => {
+                                                if (e.target.value === '__custom__') {
+                                                    setGroupIsCustom(true);
+                                                    setMemberForm({ ...memberForm, group: '' });
+                                                } else {
+                                                    setMemberForm({ ...memberForm, group: e.target.value });
+                                                }
+                                            }}
+                                            className="w-full rounded-xl border-blue-200 border-2 px-2 py-2 bg-blue-50/30 focus:bg-white transition-colors text-base h-11 outline-none appearance-none cursor-pointer"
+                                        >
+                                            <option value="">목장 선택</option>
+                                            {uniqueGroups.map(g => (
+                                                <option key={g} value={g}>{g}</option>
+                                            ))}
+                                            <option value="__custom__">+ 직접 입력</option>
+                                        </select>
+                                    )}
                                 </div>
                                 <div className="col-span-1 md:col-span-2">
                                     <label className="text-sm font-medium text-gray-500 mb-1 block">연락처</label>
